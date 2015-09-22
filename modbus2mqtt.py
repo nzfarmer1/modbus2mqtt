@@ -21,9 +21,12 @@ import sys
 import csv
 import signal
 
+import sys, traceback
+
 import modbus_tk
 import modbus_tk.defines as cst
 from modbus_tk import modbus_rtu
+from modbus_tk import modbus_tcp
 
 version="0.4"
     
@@ -36,6 +39,8 @@ parser.add_argument('--rtu', help='pyserial URL (or port name) for RTU serial po
 parser.add_argument('--rtu-baud', default='19200', type=int, help='Baud rate for serial port. Defaults to 19200')
 parser.add_argument('--rtu-parity', default='even', choices=['even','odd','none'], help='Parity for serial port. Defaults to even')
 parser.add_argument('--registers', required=True, help='Register definition file. Required!')
+parser.add_argument('--tcp', help='Use TCP',default='localhost')
+parser.add_argument('--tcp-port', help='TCP Port', default=502)
 parser.add_argument('--log', help='set log level to the specified value. Defaults to WARNING. Use DEBUG for maximum detail')
 parser.add_argument('--syslog', action='store_true', help='enable logging to syslog')
 parser.add_argument('--force', default='0',type=int, help='publish values after "force" seconds since publish regardless of change. Defaults to 0 (change only)')
@@ -58,6 +63,8 @@ def signal_handler(signal, frame):
         print('Exiting ' + sys.argv[0])
         sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
+
+
 
 class Register:
     def __init__(self,topic,frequency,slaveid,functioncode,register,size,format):
@@ -95,6 +102,7 @@ class Register:
             logging.error("Error reading "+self.topic+": Slave returned %s - %s", exc, exc.get_exception_code())
         except Exception as exc:
             logging.error("Error reading "+self.topic+": %s", exc)
+	    traceback.print_exc(file=sys.stdout)
             
 
 registers=[]
@@ -168,7 +176,7 @@ def connecthandler(mqc,userdata,rc):
     logging.info("Connected to MQTT broker with rc=%d" % (rc))
     mqc.disconnected = False
     mqc.subscribe(topic +"set/+/" + str(cst.WRITE_SINGLE_REGISTER) +"/+")
-    mqc.subscribe(towarningpic +"set/+/" + str(cst.WRITE_SINGLE_COIL) +"/+")
+    mqc.subscribe(topic +"set/+/" + str(cst.WRITE_SINGLE_COIL) +"/+")
 
 def disconnecthandler(mqc,userdata,rc):
     logging.warning("Disconnected from MQTT broker with rc=%d" % (rc))
@@ -190,6 +198,12 @@ try:
     if args.rtu:
         master=modbus_rtu.RtuMaster(serial.serial_for_url(args.rtu,baudrate=args.rtu_baud,parity=args.rtu_parity[0].upper()))
         master.set_timeout(5.0)
+        master.set_verbose(True)
+    elif args.tcp:
+	print args.tcp
+	print args.tcp_port
+	master=modbus_tcp.TcpMaster(host=args.tcp,port=int(args.tcp_port))
+        master.set_timeout(1.0)
         master.set_verbose(True)
     else:
         logging.error("You must specify a modbus access method")
